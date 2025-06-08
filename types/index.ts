@@ -73,4 +73,23 @@ export interface CardGenerationRequest {
 export interface CardGenerationResponse {
   card?: Card
   error?: string
+}
+
+// 游戏阶段类型
+export type GameStage = 'K1' | 'K2'
+
+// Few-shot示例类型
+export interface FewShotExample {
+  user: string
+  assistant: string
+}
+
+// 游戏配置类型
+export interface GameConfig {
+  currentStage: GameStage
+  k1Prompt: string
+  k2Prompt: string
+  k1FewShot: FewShotExample[]
+  k2FewShot: FewShotExample[]
+  selectedCategories: string[]
 } 

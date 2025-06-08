@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Crown, Sparkles, Loader2, Check, Settings, Zap } from 'lucide-react'
-import type { Message, ChatResponse, ElementExtractionResponse, Card, CardGenerationResponse } from '@/types'
+import { Send, Crown, Sparkles, Loader2, Check, Settings, Zap, RotateCcw } from 'lucide-react'
+import type { Message, ChatResponse, ElementExtractionResponse, Card, CardGenerationResponse, GameStage, FewShotExample } from '@/types'
 import HighlightText from '@/components/HighlightText'
 
 // 预定义的元素类别
@@ -25,9 +25,14 @@ export default function ChatPage() {
   const [extractionResult, setExtractionResult] = useState<ElementExtractionResponse | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
   const [autoExtractMode, setAutoExtractMode] = useState(true)
-  const [generatedCard, setGeneratedCard] = useState<Card | null>(null)
+  
+  // 卡牌相关状态 - 改为累计显示
+  const [generatedCards, setGeneratedCards] = useState<Card[]>([]) // 改为数组
   const [isGeneratingCard, setIsGeneratingCard] = useState(false)
   const [cardError, setCardError] = useState<string | null>(null)
+  
+  // 游戏阶段相关状态
+  const [gameStage, setGameStage] = useState<GameStage>('K1')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -61,7 +66,9 @@ export default function ChatPage() {
           messages: [...messages, userMessage].map(msg => ({
             role: msg.role,
             content: msg.content
-          }))
+          })),
+          gameStage,
+          selectedCategories
         }),
       })
 
@@ -263,7 +270,7 @@ export default function ChatPage() {
       const data: CardGenerationResponse = await response.json()
       
       if (data.card) {
-        setGeneratedCard(data.card)
+        setGeneratedCards(prev => [...prev, data.card!])
         setCardError(null)
       } else {
         setCardError('卡牌生成失败')
@@ -515,9 +522,41 @@ export default function ChatPage() {
 
           {/* 卡牌生成模块 */}
           <div className="bg-white/10 backdrop-blur-md rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Zap className="w-5 h-5 text-persian-gold" />
-              <h2 className="text-lg font-semibold text-white">卡牌生成</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-persian-gold" />
+                <h2 className="text-lg font-semibold text-white">卡牌生成</h2>
+              </div>
+              
+              {/* 游戏阶段切换 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/60">阶段:</span>
+                <button
+                  onClick={() => setGameStage(gameStage === 'K1' ? 'K2' : 'K1')}
+                  className={`
+                    px-3 py-1 rounded text-xs font-medium transition-all duration-200
+                    ${gameStage === 'K1' 
+                      ? 'bg-persian-gold text-night-blue' 
+                      : 'bg-red-500 text-white'
+                    }
+                  `}
+                >
+                  {gameStage}
+                </button>
+              </div>
+            </div>
+
+            {/* 阶段说明 */}
+            <div className="mb-4 p-2 bg-white/5 rounded text-xs">
+              <span className="text-persian-gold font-medium">
+                {gameStage === 'K1' ? '故事阶段' : '愤怒阶段'}:
+              </span>
+              <span className="text-white/70 ml-2">
+                {gameStage === 'K1' 
+                  ? '国王对故事感兴趣，会续写剧情' 
+                  : `国王对${selectedCategories.join('、')}类元素感到愤怒`
+                }
+              </span>
             </div>
 
             {/* 生成状态 */}
@@ -537,36 +576,59 @@ export default function ChatPage() {
               </div>
             )}
 
-            {/* 生成的卡牌 */}
-            {generatedCard && (
-              <div className="bg-gradient-to-br from-persian-gold/20 to-royal-purple/20 border border-persian-gold/30 rounded-lg p-4 mb-4">
-                {/* 卡牌头部 */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{getCategoryIcon(generatedCard.category)}</span>
-                    <span className="text-xs text-persian-gold/80 uppercase font-medium">
-                      {generatedCard.category}
-                    </span>
-                  </div>
-                  <div className={`text-2xl font-bold ${getPowerColor(generatedCard.power)}`}>
-                    {generatedCard.power}
-                  </div>
-                </div>
-
-                {/* 卡牌名称 */}
-                <h3 className="text-lg font-bold text-white mb-2 leading-tight">
-                  {generatedCard.name}
+            {/* 卡牌库标题 */}
+            {generatedCards.length > 0 && (
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-white">
+                  卡牌库 ({generatedCards.length})
                 </h3>
+                <button
+                  onClick={() => setGeneratedCards([])}
+                  className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  清空
+                </button>
+              </div>
+            )}
 
-                {/* 卡牌描述 */}
-                <p className="text-sm text-white/80 leading-relaxed">
-                  {generatedCard.description}
-                </p>
+            {/* 累计显示的卡牌 */}
+            {generatedCards.length > 0 && (
+              <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
+                {generatedCards.slice().reverse().map((card, index) => (
+                  <div 
+                    key={card.id} 
+                    className="bg-gradient-to-br from-persian-gold/20 to-royal-purple/20 border border-persian-gold/30 rounded-lg p-3"
+                  >
+                    {/* 卡牌头部 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{getCategoryIcon(card.category)}</span>
+                        <span className="text-xs text-persian-gold/80 uppercase font-medium">
+                          {card.category}
+                        </span>
+                      </div>
+                      <div className={`text-xl font-bold ${getPowerColor(card.power)}`}>
+                        {card.power}
+                      </div>
+                    </div>
+
+                    {/* 卡牌名称 */}
+                    <h4 className="text-sm font-bold text-white mb-1 leading-tight">
+                      {card.name}
+                    </h4>
+
+                    {/* 卡牌描述 */}
+                    <p className="text-xs text-white/80 leading-relaxed">
+                      {card.description}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* 使用提示 */}
-            {!generatedCard && !isGeneratingCard && !cardError && (
+            {!generatedCards.length && !isGeneratingCard && !cardError && (
               <div className="text-center py-8">
                 <Zap className="w-8 h-8 mx-auto mb-2 text-white/30" />
                 <p className="text-sm text-white/60">
