@@ -3,6 +3,11 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  hasExtractedElements?: boolean
+  // 国王回复的详细信息
+  comment?: string
+  story?: string
+  isValid?: boolean
 }
 
 export interface ChatResponse {
@@ -21,4 +26,31 @@ export interface KeywordAnalysis {
   keywords: string[]
   analysis: string
   confidence: number
+}
+
+export interface ElementCategory {
+  id: string
+  name: string
+  description: string
+  examples: string[]
+}
+
+export interface ExtractedElement {
+  element: string
+  category: string
+  startIndex: number
+  endIndex: number
+  confidence: number
+}
+
+export interface ElementExtractionRequest {
+  message: string
+  categories: string[]
+}
+
+export interface ElementExtractionResponse {
+  markedText?: string
+  error?: string
+  success?: boolean
+  message?: string
 } 
