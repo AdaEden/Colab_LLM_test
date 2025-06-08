@@ -4,7 +4,8 @@ import { useState } from 'react'
 
 interface HighlightTextProps {
   text: string
-  onElementClick?: (element: string) => void
+  selectedCategories: string[]
+  onElementClick?: (element: string, category: string) => void
 }
 
 // 定义不同类别的颜色 - 简化版，基于元素内容判断
@@ -47,7 +48,57 @@ const getElementColor = (element: string): string => {
   return 'bg-gray-400/30 text-gray-700 border-gray-400'
 }
 
-export default function HighlightText({ text, onElementClick }: HighlightTextProps) {
+// 改进的类别推断：优先从用户选择的类别中匹配
+const inferElementCategory = (element: string, selectedCategories: string[]): string => {
+  const plantKeywords = ['花', '树', '草', '叶', '果', '荆棘', '玫瑰', '莲花', '牡丹', '菊花', '松树', '柳树', '橡树']
+  const foodKeywords = ['面包', '酒', '茶', '水', '肉', '鱼', '果汁', '米饭', '馒头']
+  const weaponKeywords = ['剑', '刀', '弓', '箭', '盾', '矛', '斧', '匕首', '宝剑', '利剑', '长剑']
+  const treasureKeywords = ['黄金', '白银', '珠宝', '宝石', '钻石', '宝物', '珍宝', '金币']
+  const animalKeywords = ['马', '鸟', '龙', '凤凰', '老虎', '狮子', '鹰', '骏马', '战马']
+  const placeKeywords = ['宫殿', '城堡', '花园', '沙漠', '森林', '山脉', '城市', '房间']
+  const peopleKeywords = ['国王', '王子', '公主', '商人', '士兵', '法师', '盗贼']
+  const clothingKeywords = ['长袍', '头冠', '王冠', '项链', '手镯', '袈裟', '斗篷']
+
+  // 构建类别关键词映射
+  const categoryKeywords: { [key: string]: string[] } = {
+    '植物': plantKeywords,
+    '食物': foodKeywords,
+    '武器': weaponKeywords,
+    '宝物': treasureKeywords,
+    '动物': animalKeywords,
+    '地点': placeKeywords,
+    '人物': peopleKeywords,
+    '服饰': clothingKeywords
+  }
+
+  // 首先，在用户选择的类别中查找匹配
+  for (const category of selectedCategories) {
+    const keywords = categoryKeywords[category] || []
+    if (keywords.some(keyword => element.includes(keyword))) {
+      return category
+    }
+  }
+
+  // 如果在选择的类别中没找到，但用户只选择了一个类别，直接返回该类别
+  if (selectedCategories.length === 1) {
+    return selectedCategories[0]
+  }
+
+  // 否则使用完整的关键词匹配
+  if (plantKeywords.some(keyword => element.includes(keyword))) return '植物'
+  if (foodKeywords.some(keyword => element.includes(keyword))) return '食物'
+  if (weaponKeywords.some(keyword => element.includes(keyword))) return '武器'
+  if (treasureKeywords.some(keyword => element.includes(keyword))) return '宝物'
+  if (animalKeywords.some(keyword => element.includes(keyword))) return '动物'
+  if (placeKeywords.some(keyword => element.includes(keyword))) return '地点'
+  if (peopleKeywords.some(keyword => element.includes(keyword))) return '人物'
+  if (clothingKeywords.some(keyword => element.includes(keyword))) return '服饰'
+  
+  // 最后，如果都匹配不到，返回第一个选择的类别（因为元素肯定来自选择的类别）
+  return selectedCategories[0] || '未知'
+}
+
+export default function HighlightText({ text, selectedCategories, onElementClick }: HighlightTextProps) {
   const [hoveredElement, setHoveredElement] = useState<string | null>(null)
 
   // 解析标记的文本，提取{{}}中的元素
@@ -70,6 +121,7 @@ export default function HighlightText({ text, onElementClick }: HighlightTextPro
 
       // 添加高亮的元素
       const element = match[1]
+      const category = inferElementCategory(element, selectedCategories)
       const colorClass = getElementColor(element)
       
       parts.push(
@@ -80,10 +132,10 @@ export default function HighlightText({ text, onElementClick }: HighlightTextPro
             transition-all duration-200 hover:scale-105 hover:shadow-md
             ${colorClass}
           `}
-          onClick={() => onElementClick?.(element)}
+          onClick={() => onElementClick?.(element, category)}
           onMouseEnter={() => setHoveredElement(element)}
           onMouseLeave={() => setHoveredElement(null)}
-          title={`元素: ${element}`}
+          title={`${category}: ${element} - 点击生成卡牌`}
         >
           {element}
         </span>
@@ -116,7 +168,7 @@ export default function HighlightText({ text, onElementClick }: HighlightTextPro
         <div className="absolute bottom-full left-0 mb-2 p-2 bg-black/80 text-white text-xs rounded shadow-lg z-10 whitespace-nowrap">
           <div className="font-medium">{hoveredElement}</div>
           <div className="text-gray-300">
-            故事元素
+            {inferElementCategory(hoveredElement, selectedCategories)} - 点击生成卡牌
           </div>
         </div>
       )}

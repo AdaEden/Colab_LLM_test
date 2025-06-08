@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Crown, Sparkles, Loader2, Check, Settings } from 'lucide-react'
-import type { Message, ChatResponse, ElementExtractionResponse } from '@/types'
+import { Send, Crown, Sparkles, Loader2, Check, Settings, Zap } from 'lucide-react'
+import type { Message, ChatResponse, ElementExtractionResponse, Card, CardGenerationResponse } from '@/types'
 import HighlightText from '@/components/HighlightText'
 
 // 预定义的元素类别
@@ -25,6 +25,9 @@ export default function ChatPage() {
   const [extractionResult, setExtractionResult] = useState<ElementExtractionResponse | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
   const [autoExtractMode, setAutoExtractMode] = useState(true)
+  const [generatedCard, setGeneratedCard] = useState<Card | null>(null)
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false)
+  const [cardError, setCardError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -41,8 +44,7 @@ export default function ChatPage() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputValue,
-      timestamp: new Date()
+      content: inputValue
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -73,7 +75,6 @@ export default function ChatPage() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
-        timestamp: new Date(),
         comment: data.comment,
         story: data.story,
         isValid: data.isValid
@@ -92,8 +93,7 @@ export default function ChatPage() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '抱歉，发生了错误。请稍后再试。',
-        timestamp: new Date()
+        content: '抱歉，发生了错误。请稍后再试。'
       }
       setMessages(prev => [...prev, errorMessage])
     } finally {
@@ -221,6 +221,84 @@ export default function ChatPage() {
     }
   }
 
+  const generateCard = async (clickedElement: string, category: string) => {
+    if (isGeneratingCard) return
+    
+    setIsGeneratingCard(true)
+    setCardError(null)
+
+    try {
+      // 获取最近的用户输入和国王回复
+      const recentMessages = messages.slice(-2)
+      let playerInput = ''
+      let kingOutput = ''
+      
+      if (recentMessages.length >= 2) {
+        const userMsg = recentMessages.find(m => m.role === 'user')
+        const assistantMsg = recentMessages.find(m => m.role === 'assistant')
+        
+        playerInput = userMsg?.content || ''
+        kingOutput = assistantMsg?.story || assistantMsg?.content || ''
+      }
+
+      const response = await fetch('/api/generate-card', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          playerInput,
+          kingOutput,
+          clickedElement,
+          category
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        setCardError(errorData.error || '卡牌生成失败')
+        return
+      }
+
+      const data: CardGenerationResponse = await response.json()
+      
+      if (data.card) {
+        setGeneratedCard(data.card)
+        setCardError(null)
+      } else {
+        setCardError('卡牌生成失败')
+      }
+
+    } catch (error) {
+      console.error('卡牌生成错误:', error)
+      setCardError('网络错误，请稍后重试')
+    } finally {
+      setIsGeneratingCard(false)
+    }
+  }
+
+  const getCategoryIcon = (category: string) => {
+    const iconMap: { [key: string]: string } = {
+      '植物': '🌸',
+      '食物': '🍎',
+      '武器': '⚔️',
+      '宝物': '💎',
+      '动物': '🦅',
+      '地点': '🏰',
+      '人物': '👑',
+      '服饰': '👗'
+    }
+    return iconMap[category] || '✨'
+  }
+
+  const getPowerColor = (power: number) => {
+    if (power >= 8) return 'text-red-400' // 高威力
+    if (power >= 6) return 'text-orange-400' // 中威力
+    if (power >= 4) return 'text-yellow-400' // 中等威力
+    if (power >= 2) return 'text-green-400' // 低威力
+    return 'text-gray-400' // 极低威力
+  }
+
   return (
     <div className="container mx-auto max-w-6xl h-screen flex flex-col p-4">
       {/* 标题 */}
@@ -274,9 +352,11 @@ export default function ChatPage() {
                               {message.hasExtractedElements ? (
                                 <HighlightText
                                   text={message.story}
-                                  onElementClick={(element) => {
-                                    console.log('点击了元素:', element)
-                                    // 暂时移除弹窗
+                                  selectedCategories={selectedCategories}
+                                  onElementClick={(element, category) => {
+                                    console.log('点击了元素:', element, '类别:', category)
+                                    // 生成卡牌
+                                    generateCard(element, category)
                                   }}
                                 />
                               ) : (
@@ -293,9 +373,6 @@ export default function ChatPage() {
                       ) : (
                         <p className="whitespace-pre-wrap">{message.content}</p>
                       )}
-                      <p className="text-xs opacity-70 mt-1">
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
                     </div>
                   </div>
                 ))}
@@ -337,101 +414,170 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* 元素提取模块 */}
-        <div className="w-80 bg-white/10 backdrop-blur-md rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-persian-gold" />
-            <h2 className="text-lg font-semibold text-white">元素提取</h2>
-          </div>
-
-          {/* 自动模式开关 */}
-          <div className="mb-4 p-3 bg-white/5 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-persian-gold" />
-                <span className="text-sm font-medium text-white">自动模式</span>
-              </div>
-              <button
-                onClick={() => setAutoExtractMode(!autoExtractMode)}
-                className={`
-                  relative w-12 h-6 rounded-full transition-all duration-300
-                  ${autoExtractMode ? 'bg-persian-gold' : 'bg-white/20'}
-                `}
-              >
-                <div
-                  className={`
-                    absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300
-                    ${autoExtractMode ? 'left-7' : 'left-1'}
-                  `}
-                />
-              </button>
+        {/* 右侧区域：元素提取 + 卡牌生成 */}
+        <div className="w-80 flex flex-col gap-4">
+          {/* 元素提取模块 */}
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="w-5 h-5 text-persian-gold" />
+              <h2 className="text-lg font-semibold text-white">元素提取</h2>
             </div>
-            <p className="text-xs text-white/60">
-              {autoExtractMode ? '国王回复后自动进行元素提取' : '需要手动点击按钮进行元素提取'}
-            </p>
-          </div>
-          
-          {/* 元素类别选择 */}
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-white mb-2">选择元素类别:</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {ELEMENT_CATEGORIES.map((category) => (
+
+            {/* 自动模式开关 */}
+            <div className="mb-4 p-3 bg-white/5 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-persian-gold" />
+                  <span className="text-sm font-medium text-white">自动模式</span>
+                </div>
                 <button
-                  key={category.id}
-                  onClick={() => handleCategoryToggle(category.name)}
+                  onClick={() => setAutoExtractMode(!autoExtractMode)}
                   className={`
-                    text-xs p-2 rounded-lg border transition-all duration-200
-                    ${selectedCategories.includes(category.name)
-                      ? 'bg-persian-gold/20 text-persian-gold border-persian-gold'
-                      : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-                    }
+                    relative w-12 h-6 rounded-full transition-all duration-300
+                    ${autoExtractMode ? 'bg-persian-gold' : 'bg-white/20'}
                   `}
                 >
-                  <div className="flex items-center gap-1">
-                    <span>{category.icon}</span>
-                    <span>{category.name}</span>
-                    {selectedCategories.includes(category.name) && (
-                      <Check className="w-3 h-3" />
-                    )}
-                  </div>
+                  <div
+                    className={`
+                      absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300
+                      ${autoExtractMode ? 'left-7' : 'left-1'}
+                    `}
+                  />
                 </button>
-              ))}
+              </div>
+              <p className="text-xs text-white/60">
+                {autoExtractMode ? '国王回复后自动进行元素提取' : '需要手动点击按钮进行元素提取'}
+              </p>
             </div>
+            
+            {/* 元素类别选择 */}
+            <div className="mb-4">
+              <h3 className="text-sm font-medium text-white mb-2">选择元素类别:</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {ELEMENT_CATEGORIES.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => handleCategoryToggle(category.name)}
+                    className={`
+                      text-xs p-2 rounded-lg border transition-all duration-200
+                      ${selectedCategories.includes(category.name)
+                        ? 'bg-persian-gold/20 text-persian-gold border-persian-gold'
+                        : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>{category.icon}</span>
+                      <span>{category.name}</span>
+                      {selectedCategories.includes(category.name) && (
+                        <Check className="w-3 h-3" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 手动提取按钮 */}
+            <button
+              onClick={extractElements}
+              disabled={isExtracting || messages.filter(m => m.role === 'assistant').length === 0 || selectedCategories.length === 0}
+              className="w-full bg-royal-purple text-white px-4 py-2 rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed mb-4 flex items-center justify-center gap-2"
+            >
+              {isExtracting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  提取中...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  {autoExtractMode ? '重新提取' : '提取元素'}
+                </>
+              )}
+            </button>
+
+            {/* 提取结果显示 */}
+            {extractionResult && (
+              <div className="bg-white/10 rounded-lg p-3">
+                {extractionResult.error ? (
+                  <div className="text-red-400 text-sm">
+                    ❌ {extractionResult.error}
+                  </div>
+                ) : extractionResult.success ? (
+                  <div className="text-green-400 text-sm">
+                    ✅ {extractionResult.message}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
 
-          {/* 手动提取按钮 */}
-          <button
-            onClick={extractElements}
-            disabled={isExtracting || messages.filter(m => m.role === 'assistant').length === 0 || selectedCategories.length === 0}
-            className="w-full bg-royal-purple text-white px-4 py-2 rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed mb-4 flex items-center justify-center gap-2"
-          >
-            {isExtracting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                提取中...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                {autoExtractMode ? '重新提取' : '提取元素'}
-              </>
-            )}
-          </button>
-
-          {/* 提取结果显示 */}
-          {extractionResult && (
-            <div className="bg-white/10 rounded-lg p-3">
-              {extractionResult.error ? (
-                <div className="text-red-400 text-sm">
-                  ❌ {extractionResult.error}
-                </div>
-              ) : extractionResult.success ? (
-                <div className="text-green-400 text-sm">
-                  ✅ {extractionResult.message}
-                </div>
-              ) : null}
+          {/* 卡牌生成模块 */}
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-5 h-5 text-persian-gold" />
+              <h2 className="text-lg font-semibold text-white">卡牌生成</h2>
             </div>
-          )}
+
+            {/* 生成状态 */}
+            {isGeneratingCard && (
+              <div className="flex items-center gap-2 mb-4 p-3 bg-white/5 rounded-lg">
+                <Loader2 className="w-4 h-4 animate-spin text-persian-gold" />
+                <span className="text-sm text-white">正在生成卡牌...</span>
+              </div>
+            )}
+
+            {/* 错误提示 */}
+            {cardError && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+                <div className="text-red-400 text-sm">
+                  ❌ {cardError}
+                </div>
+              </div>
+            )}
+
+            {/* 生成的卡牌 */}
+            {generatedCard && (
+              <div className="bg-gradient-to-br from-persian-gold/20 to-royal-purple/20 border border-persian-gold/30 rounded-lg p-4 mb-4">
+                {/* 卡牌头部 */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{getCategoryIcon(generatedCard.category)}</span>
+                    <span className="text-xs text-persian-gold/80 uppercase font-medium">
+                      {generatedCard.category}
+                    </span>
+                  </div>
+                  <div className={`text-2xl font-bold ${getPowerColor(generatedCard.power)}`}>
+                    {generatedCard.power}
+                  </div>
+                </div>
+
+                {/* 卡牌名称 */}
+                <h3 className="text-lg font-bold text-white mb-2 leading-tight">
+                  {generatedCard.name}
+                </h3>
+
+                {/* 卡牌描述 */}
+                <p className="text-sm text-white/80 leading-relaxed">
+                  {generatedCard.description}
+                </p>
+              </div>
+            )}
+
+            {/* 使用提示 */}
+            {!generatedCard && !isGeneratingCard && !cardError && (
+              <div className="text-center py-8">
+                <Zap className="w-8 h-8 mx-auto mb-2 text-white/30" />
+                <p className="text-sm text-white/60">
+                  点击故事中的高亮元素
+                </p>
+                <p className="text-xs text-white/40 mt-1">
+                  生成专属卡牌
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

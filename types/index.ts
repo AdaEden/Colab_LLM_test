@@ -2,7 +2,6 @@ export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  timestamp: Date
   hasExtractedElements?: boolean
   // 国王回复的详细信息
   comment?: string
@@ -53,4 +52,25 @@ export interface ElementExtractionResponse {
   error?: string
   success?: boolean
   message?: string
+}
+
+// 卡牌相关类型
+export interface Card {
+  id: string
+  name: string
+  power: number
+  description: string
+  category: string
+}
+
+export interface CardGenerationRequest {
+  playerInput: string
+  kingOutput: string
+  clickedElement: string
+  category: string
+}
+
+export interface CardGenerationResponse {
+  card?: Card
+  error?: string
 } 
