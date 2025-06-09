@@ -3,6 +3,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   hasExtractedElements?: boolean
+  messageType?: 'normal' | 'system' | 'player-thought'
   // 国王回复的详细信息
   comment?: string
   story?: string
@@ -14,6 +15,7 @@ export interface ChatResponse {
   isValid: boolean
   comment?: string
   story?: string
+  gameStage?: GameStage
   usage?: {
     prompt_tokens: number
     completion_tokens: number

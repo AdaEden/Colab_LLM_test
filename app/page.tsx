@@ -17,6 +17,9 @@ const ELEMENT_CATEGORIES = [
   { id: 'clothing', name: '服饰', description: '衣物、装饰品等', icon: '👗' }
 ]
 
+// 游戏配置常量
+const CARDS_THRESHOLD_FOR_K2 = 2 // 获得2张卡牌后进入K2
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -27,12 +30,13 @@ export default function ChatPage() {
   const [autoExtractMode, setAutoExtractMode] = useState(true)
   
   // 卡牌相关状态 - 改为累计显示
-  const [generatedCards, setGeneratedCards] = useState<Card[]>([]) // 改为数组
+  const [generatedCards, setGeneratedCards] = useState<Card[]>([])
   const [isGeneratingCard, setIsGeneratingCard] = useState(false)
   const [cardError, setCardError] = useState<string | null>(null)
   
   // 游戏阶段相关状态
   const [gameStage, setGameStage] = useState<GameStage>('K1')
+  const [hasTriggeredK2, setHasTriggeredK2] = useState(false) // 防止重复触发K2
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -42,6 +46,41 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // 检查是否应该进入K2阶段
+  useEffect(() => {
+    if (gameStage === 'K1' && !hasTriggeredK2 && generatedCards.length >= CARDS_THRESHOLD_FOR_K2) {
+      setHasTriggeredK2(true)
+      
+      // 添加系统消息：国王的固定台词
+      const categoriesText = selectedCategories.join('、')
+      const kingMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `怎么总是说乱七八糟的${categoriesText}！给我好好讲！`,
+        messageType: 'system',
+        comment: `怎么总是说乱七八糟的${categoriesText}！给我好好讲！`,
+        story: '',
+        isValid: false
+      }
+      
+      // 添加玩家气泡
+      const playerBubble: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'user',
+        content: `他开始警觉了！也许我不应该直接提及${categoriesText}`,
+        messageType: 'player-thought',
+        isValid: true
+      }
+      
+      setMessages(prev => [...prev, kingMessage, playerBubble])
+      
+      // 切换到K2阶段
+      setTimeout(() => {
+        setGameStage('K2')
+      }, 1000)
+    }
+  }, [generatedCards.length, gameStage, hasTriggeredK2, selectedCategories])
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return
@@ -306,15 +345,41 @@ export default function ChatPage() {
     return 'text-gray-400' // 极低威力
   }
 
+  // 重置游戏状态
+  const resetGame = () => {
+    setGameStage('K1')
+    setHasTriggeredK2(false)
+    setGeneratedCards([])
+    setMessages([])
+    setExtractionResult(null)
+    setCardError(null)
+  }
+
   return (
     <div className="container mx-auto max-w-6xl h-screen flex flex-col p-4">
       {/* 标题 */}
       <div className="text-center mb-6">
-        <h1 className="text-4xl font-bold text-persian-gold mb-2 flex items-center justify-center gap-2">
-          <Crown className="w-8 h-8" />
-          一千零一夜的国王
-        </h1>
+        <div className="flex items-center justify-center gap-4 mb-2">
+          <h1 className="text-4xl font-bold text-persian-gold flex items-center gap-2">
+            <Crown className="w-8 h-8" />
+            一千零一夜的国王
+          </h1>
+          <button
+            onClick={resetGame}
+            className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-lg transition-all duration-200 flex items-center gap-1"
+            title="重置游戏"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重置
+          </button>
+        </div>
         <p className="text-white/80 text-lg">与《一千零一夜》中的萨珊王对话</p>
+        <p className="text-white/60 text-sm mt-1">
+          当前阶段: <span className={`font-medium ${gameStage === 'K1' ? 'text-persian-gold' : 'text-red-400'}`}>
+            {gameStage === 'K1' ? '故事阶段' : '愤怒阶段'}
+          </span>
+          {gameStage === 'K1' && ` | 卡牌进度: ${generatedCards.length}/${CARDS_THRESHOLD_FOR_K2}`}
+        </p>
       </div>
 
       <div className="flex-1 flex gap-4">
@@ -339,7 +404,11 @@ export default function ChatPage() {
                   >
                     <div
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        message.role === 'user'
+                        message.messageType === 'system'
+                          ? 'bg-red-500/80 text-white border border-red-400' // 系统消息（国王愤怒）
+                          : message.messageType === 'player-thought'
+                          ? 'bg-blue-500/30 text-blue-200 border border-blue-400 italic' // 玩家内心独白
+                          : message.role === 'user'
                           ? 'bg-persian-gold text-night-blue'
                           : 'bg-white/20 text-white border border-persian-gold'
                       }`}
@@ -583,7 +652,14 @@ export default function ChatPage() {
                   卡牌库 ({generatedCards.length})
                 </h3>
                 <button
-                  onClick={() => setGeneratedCards([])}
+                  onClick={() => {
+                    setGeneratedCards([])
+                    // 如果当前在K2且卡牌被清空，重置K2触发状态
+                    if (gameStage === 'K2') {
+                      setHasTriggeredK2(false)
+                      setGameStage('K1')
+                    }
+                  }}
                   className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"
                 >
                   <RotateCcw className="w-3 h-3" />
@@ -637,6 +713,11 @@ export default function ChatPage() {
                 <p className="text-xs text-white/40 mt-1">
                   生成专属卡牌
                 </p>
+                {gameStage === 'K1' && (
+                  <p className="text-xs text-persian-gold/60 mt-2">
+                    收集 {CARDS_THRESHOLD_FOR_K2} 张卡牌解锁愤怒阶段
+                  </p>
+                )}
               </div>
             )}
           </div>

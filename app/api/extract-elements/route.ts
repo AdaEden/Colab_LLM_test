@@ -1,4 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { CATEGORY_DESCRIPTIONS } from '@/config/game-prompts'
+
+// Few-shot示例定义
+const ELEMENT_EXTRACTION_FEW_SHOT = [
+  {
+    user: "用户故事：我走进了一片神秘的花园，里面种满了各种奇花异草。\n国王故事：沙漠中有一朵红色的荆棘之花，旁边放着一把锋利的宝剑。\n指定类别：植物\n请标记并返回：",
+    assistant: "沙漠中有一朵红色的{{荆棘之花}}，旁边放着一把锋利的宝剑。"
+  }
+]
+
+// 动态生成元素类别定义
+function generateCategoryDefinitions(): string {
+  return Object.entries(CATEGORY_DESCRIPTIONS)
+    .map(([category, description]) => `- ${category}：${description}`)
+    .join('\n')
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,41 +43,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 构建简化的元素提取系统提示词
+    // 构建系统提示词（使用动态生成的类别定义）
     const systemPrompt = `
 你是一个专业的文本分析师，专门从《一千零一夜》风格的文本中提取指定类别的元素。
 
 元素类别定义：
-- 植物：花朵、树木、草药、果实等所有植物相关内容
-- 食物：食品、饮料、调料等可食用物品
-- 武器：刀剑、弓箭、盾牌、魔法武器等战斗工具
-- 宝物：珠宝、黄金、宝石、魔法物品等贵重物品
-- 动物：各种生物、神话生物、坐骑等
-- 地点：城市、建筑、地形、房间等场所
-- 人物：角色名称、职业、身份等
-- 服饰：衣物、装饰品、头饰等穿戴物品
+${generateCategoryDefinitions()}
 
 你的任务是：
 1. 参考用户故事的上下文，理解故事背景和元素含义
 2. 从国王的故事中识别并提取用户指定类别的所有元素
 3. 用双花括号{{}}标记这些元素
-
-只返回标记后的国王故事文本，不要包含任何其他内容。
-
-示例：
-用户故事：我走进了一片神秘的花园，里面种满了各种奇花异草。
-国王故事：沙漠中有一朵红色的荆棘之花，旁边放着一把锋利的宝剑。
-类别：植物、武器
-返回：沙漠中有一朵红色的{{荆棘之花}}，旁边放着一把锋利的{{宝剑}}。
+4. 只返回标记后的国王故事文本，不要包含任何其他内容、解释或说明。若不包含指定元素，则返回未加标注的原文。
 `
 
-    // 构建消息
+    // 构建完整的消息列表：system + few-shot + 用户请求
+    const messages = [
+      { role: 'system', content: systemPrompt }
+    ]
+
+    // 添加few-shot示例
+    ELEMENT_EXTRACTION_FEW_SHOT.forEach(example => {
+      messages.push({ role: 'user', content: example.user })
+      messages.push({ role: 'assistant', content: example.assistant })
+    })
+
+    // 添加用户的实际请求
     const categoriesText = categories.join('、')
     const contextText = userMessage ? `用户故事：${userMessage}\n\n` : ''
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${contextText}国王故事：${assistantStory}\n\n请从国王的故事中提取"${categoriesText}"类别的元素并标记：` }
-    ]
+    const userRequest = `${contextText}国王故事：${assistantStory}\n\n指定类别：${categoriesText}\n\n请标记并返回：`
+    
+    messages.push({ role: 'user', content: userRequest })
 
     // 调用GLM API
     const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
